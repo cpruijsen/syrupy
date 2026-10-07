@@ -76,7 +76,18 @@ class SingleFileSnapshotExtension(AbstractSyrupyExtension):
     def delete_snapshots(
         self, *, snapshot_location: str, snapshot_names: set[str]
     ) -> None:
-        Path(snapshot_location).unlink()
+        filepath = Path(snapshot_location)
+        filepath.unlink()
+        # Prune the per-test-file collection directory when the deletion
+        # leaves it empty (see #1250). Only directories nested directly inside
+        # the snapshot collection directory are pruned.
+        collection_dirname = Path(str(self.snapshot_dirname)).name
+        if filepath.parent.parent.name != collection_dirname:
+            return
+        try:
+            filepath.parent.rmdir()
+        except OSError:
+            pass
 
     @classmethod
     def get_file_basename(
@@ -88,6 +99,32 @@ class SingleFileSnapshotExtension(AbstractSyrupyExtension):
     def dirname(cls, *, test_location: "PyTestLocation") -> str:
         original_dirname = AbstractSyrupyExtension.dirname(test_location=test_location)
         return str(Path(original_dirname).joinpath(test_location.basename))
+
+    @classmethod
+    def discovery_dirname(cls, *, test_location: "PyTestLocation") -> str:
+        dirname = cls.dirname(test_location=test_location)
+        if Path(dirname).name != test_location.basename:
+            # Layouts that do not nest collections under the test file's
+            # basename keep file-scoped discovery.
+            return dirname
+        return str(Path(dirname).parent)
+
+    def owns_snapshot_collection(
+        self, *, filepath: str, test_location: "PyTestLocation"
+    ) -> bool:
+        if not self.is_snapshot_location(location=filepath):
+            return False
+        dirname = Path(self.dirname(test_location=test_location))
+        if Path(self.discovery_dirname(test_location=test_location)) == dirname:
+            # File-scoped discovery (custom layouts): claim matching files
+            # anywhere under the collection directory, as before.
+            return True
+        # Directory-scoped discovery covers the shared snapshot directory;
+        # this extension's collections are the files nested one level inside
+        # it, e.g. ``__snapshots__/test_file/test_case.json``.
+        return Path(filepath).parent.parent == Path(
+            self.discovery_dirname(test_location=test_location)
+        )
 
     def read_snapshot_collection(
         self, *, snapshot_location: str

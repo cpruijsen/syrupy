@@ -380,6 +380,7 @@ class SnapshotSession:
                 selected_items=self._selected_items,
                 assertions=self._assertions,
                 options=self.pytest_session.config.option,
+                _extensions=self._extensions,
             )
 
             if is_xdist_worker():
@@ -423,10 +424,12 @@ class SnapshotSession:
         if self.disable_unused_snapshots:
             return
 
-        test_location = assertion.test_location.filepath
         extension_class = assertion.extension.__class__
-        if extension_class not in self._locations_discovered[test_location]:
-            self._locations_discovered[test_location].add(extension_class)
+        discovery_dir = assertion.extension.discovery_dirname(
+            test_location=assertion.test_location
+        )
+        if extension_class not in self._locations_discovered[discovery_dir]:
+            self._locations_discovered[discovery_dir].add(extension_class)
             discovered_extensions = {
                 discovered.location: assertion.extension
                 for discovered in assertion.extension.discover_snapshots(
