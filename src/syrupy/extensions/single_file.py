@@ -76,18 +76,7 @@ class SingleFileSnapshotExtension(AbstractSyrupyExtension):
     def delete_snapshots(
         self, *, snapshot_location: str, snapshot_names: set[str]
     ) -> None:
-        filepath = Path(snapshot_location)
-        filepath.unlink()
-        # Prune the per-test-file collection directory when the deletion
-        # leaves it empty (see #1250). Only directories nested directly inside
-        # the snapshot collection directory are pruned.
-        collection_dirname = Path(str(self.snapshot_dirname)).name
-        if filepath.parent.parent.name != collection_dirname:
-            return
-        try:
-            filepath.parent.rmdir()
-        except OSError:
-            pass
+        Path(snapshot_location).unlink()
 
     @classmethod
     def get_file_basename(

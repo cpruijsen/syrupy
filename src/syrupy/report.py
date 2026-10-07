@@ -309,8 +309,13 @@ class SnapshotReport:
             self.discovered, self.used
         ):
             snapshot_location = unused_snapshot_collection.location
-            if self._provided_test_paths and not self._ran_items_match_location(
-                snapshot_location
+            if (
+                self._provided_test_paths
+                and not self._ran_items_match_location(snapshot_location)
+                and not any(
+                    Path(path).is_dir() and Path(snapshot_location).is_relative_to(path)
+                    for path in self._provided_test_paths
+                )
             ):
                 # Paths/Packages were provided to pytest and the snapshot location does
                 # not match any of ran tests therefore ignore this unused snapshot file

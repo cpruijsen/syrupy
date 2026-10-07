@@ -492,11 +492,26 @@ def test_update_removes_hanging_snapshot_collection_file(run_testcases, plugin_a
     assert not snapfile_hanging.exists()
 
 
-@pytest.mark.parametrize("selection", ["full", "partial", "no_snapshots"])
+@pytest.mark.parametrize(
+    "selection",
+    [
+        "full",
+        "partial",
+        "no_snapshots",
+        "unknown_extension",
+        "mixed_amber",
+        "directory",
+    ],
+)
 def test_update_removes_single_file_collection_of_deleted_test_file(
     testdir, plugin_args, selection
 ):
-    json_extension = "syrupy.extensions.json.JSONSnapshotExtension"
+    extension = (
+        "syrupy.extensions.single_file.SingleFileAmberSnapshotExtension"
+        if selection == "mixed_amber"
+        else "syrupy.extensions.json.JSONSnapshotExtension"
+    )
+    suffix = "ambr" if selection == "mixed_amber" else "json"
     testdir.makepyfile(
         test_foo=(
             """
@@ -514,22 +529,34 @@ def test_update_removes_single_file_collection_of_deleted_test_file(
     testdir.runpytest(
         "-v",
         "--snapshot-update",
-        f"--snapshot-default-extension={json_extension}",
+        f"--snapshot-default-extension={extension}",
     )
     snapshot_dir = Path(testdir.tmpdir, "__snapshots__", "test_bar")
-    snapshot_file = Path(snapshot_dir, "test_bar.json")
+    snapshot_file = Path(snapshot_dir, f"test_bar.{suffix}")
     assert snapshot_file.exists()
 
     # Deleting the test file leaves no assertion to reveal the snapshot site;
     # the orphaned collection is still found through the remaining test file.
     Path(testdir.tmpdir, "test_bar.py").unlink()
-    if selection == "no_snapshots":
+    if selection in {"no_snapshots", "unknown_extension"}:
         testdir.makepyfile(test_foo="def test_foo():\n    assert True")
+    elif selection == "mixed_amber":
+        testdir.makepyfile(
+            test_foo=(
+                "from syrupy.extensions.amber import AmberSnapshotExtension\n"
+                "def test_foo(snapshot):\n"
+                '    assert snapshot.use_extension(AmberSnapshotExtension) == "foo"'
+            )
+        )
     result = testdir.runpytest(
         "-v",
-        *(["test_foo.py"] if selection == "partial" else []),
+        *({"partial": ["test_foo.py"], "directory": ["."]}.get(selection, [])),
         "--snapshot-update",
-        f"--snapshot-default-extension={json_extension}",
+        *(
+            [f"--snapshot-default-extension={extension}"]
+            if selection != "unknown_extension"
+            else []
+        ),
         *plugin_args,
     )
     assert result.ret == 0
@@ -541,8 +568,10 @@ def test_update_removes_single_file_collection_of_deleted_test_file(
             "orphaned single-file collection directory remains"
         )
     assert Path(
-        testdir.tmpdir, "__snapshots__", "test_foo", "test_foo.json"
-    ).exists() == (selection != "no_snapshots")
+        testdir.tmpdir, "__snapshots__", "test_foo", f"test_foo.{suffix}"
+    ).exists() == (selection in {"full", "partial", "directory"})
+    if selection == "mixed_amber":
+        assert Path(testdir.tmpdir, "__snapshots__", "test_foo.ambr").exists()
 
 
 def test_update_removes_collection_dir_without_snapshot_tests(testdir, plugin_args):

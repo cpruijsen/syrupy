@@ -18,6 +18,7 @@ import pytest
 from .constants import EXIT_STATUS_FAIL_UNUSED
 from .data import SnapshotCollections
 from .exceptions import FailedToLoadModuleMember
+from .extensions.base import SnapshotCollectionStorage
 from .location import PyTestLocation
 from .report import SnapshotReport
 from .types import (
@@ -465,6 +466,24 @@ class SnapshotSession:
                 )
             elif snapshot_location not in used_snapshot_collections:
                 Path(snapshot_location).unlink()
+
+            # The owner can be unknown or use another layout with the same suffix.
+            # Prune empty per-test-file directories after either deletion path.
+            if self.snapshot_file_lock:
+                cleanup_snapshot_write_sidecars(snapshot_location)
+            filepath = Path(snapshot_location)
+            collection_dirname = Path(
+                str(
+                    extension.snapshot_dirname
+                    if extension
+                    else SnapshotCollectionStorage.snapshot_dirname
+                )
+            ).name
+            if filepath.parent.parent.name == collection_dirname:
+                try:
+                    filepath.parent.rmdir()
+                except OSError:
+                    pass
 
     @staticmethod
     def filter_valid_items(items: list["pytest.Item"]) -> Iterable["pytest.Item"]:
